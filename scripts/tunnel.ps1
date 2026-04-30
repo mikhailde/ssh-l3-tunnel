@@ -46,13 +46,24 @@ if ($Action -eq "Up") {
         }
     }
 
-    wsl -u root bash -c "sysctl -w net.ipv4.ip_forward=1 >/dev/null; iptables -t nat -F; iptables -t nat -A POSTROUTING -o tun0 -j MASQUERADE"
+    wsl -u root bash -c "
+        sysctl -w net.ipv4.ip_forward=1 >/dev/null;
+        iptables -C FORWARD -i tun0 -j ACCEPT 2>/dev/null || iptables -I FORWARD -i tun0 -j ACCEPT;
+        iptables -C FORWARD -o tun0 -j ACCEPT 2>/dev/null || iptables -I FORWARD -o tun0 -j ACCEPT;
+        iptables -t nat -C POSTROUTING -o tun0 -j MASQUERADE 2>/dev/null || \
+        iptables -t nat -A POSTROUTING -o tun0 -j MASQUERADE
+    "
 
     foreach ($t in $targets) { route add $t mask 255.255.255.255 $mainGw metric 1 2>$null }
     Set-Routes $wslIp
 }
 else {
     Write-Host ">>> STOPPING <<<" -Fore Cyan
+    wsl -u root bash -c "
+        iptables -D FORWARD -i tun0 -j ACCEPT 2>/dev/null;
+        iptables -D FORWARD -o tun0 -j ACCEPT 2>/dev/null;
+        iptables -t nat -D POSTROUTING -o tun0 -j MASQUERADE 2>/dev/null
+    "
     Set-Routes ""
     foreach ($t in $targets) { route delete $t 2>$null }
 }
