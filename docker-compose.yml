@@ -1,0 +1,11 @@
+services:
+  ssh-tunnel:
+    build:
+      context: ./docker
+    container_name: ssh-tunnel
+    privileged: true
+    network_mode: host
+    restart: unless-stopped
+    env_file: config/.env
+    volumes:
+      - ./config/id_rsa:/root/.ssh/id_rsa:ro
