@@ -15,13 +15,30 @@ A high-performance, VPN-like Layer 3 tunnel over SSH, fully dockerized. This pro
 ## Prerequisites
 
 ### 1. Remote Server (Linux)
+
+#### SSH Configuration
 The SSH server must allow tunneling. Edit `/etc/ssh/sshd_config`:
 ```bash
 PermitTunnel yes
 AllowTcpForwarding yes
 # Restart SSH after changes: systemctl restart ssh
 ```
-*Note: You need **root** access to the server to create and configure the `tun` device.*
+
+#### IP Forwarding & NAT (Masquerade)
+The server must be configured to forward traffic from the tunnel to the internet. 
+
+1. **Enable IP Forwarding:**
+   ```bash
+   sysctl -w net.ipv4.ip_forward=1
+   # To make it permanent, add "net.ipv4.ip_forward=1" to /etc/sysctl.conf
+   ```
+
+2. **Enable NAT (Masquerade):**
+   Assuming your server's public interface is `eth0` (check with `ip route`), run:
+   ```bash
+   iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+   ```
+   *Note: If you use `nftables` or `ufw`, ensure that traffic from the tunnel subnet (e.g., `10.0.0.0/24`) is allowed to be forwarded and masqueraded.*
 
 ### 2. Local Machine
 - **Linux**: Docker and Docker Compose.

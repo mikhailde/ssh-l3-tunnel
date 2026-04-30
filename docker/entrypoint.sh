@@ -36,9 +36,7 @@ done
 
 ip addr add "$L" peer "$R" dev tun0 && ip link set tun0 up
 ssh -i "$K" -p "$P" -o StrictHostKeyChecking=no "$U@$REMOTE_HOST" \
-    "sysctl -w net.ipv4.ip_forward=1 > /dev/null; \
-     ip addr add $R peer $L dev tun0 2>/dev/null; \
-     ip link set tun0 up" || cleanup
+    "ip addr add $R peer $L dev tun0 2>/dev/null; ip link set tun0 up" || cleanup
 
 sleep 2
 ip route del default
