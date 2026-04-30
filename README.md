@@ -81,9 +81,20 @@ The server must be configured to forward traffic from the tunnel to the internet
 | `CONTAINER_EXCLUDE_IPS` | - | IPs excluded inside WSL/Container (Include `REMOTE_HOST` here). |
 | `HOST_EXCLUDE_IPS` | - | IPs excluded on Windows Host (Local networks, Server IP, etc). |
 
-### Recommended Exclusions (RFC 1918)
-To maintain access to local devices (printers, routers), add these to `HOST_EXCLUDE_IPS`:
-`your.server.ip,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12,169.254.0.0/16`
+### Exclusions & Routing
+To prevent traffic loops and maintain access to local devices, you can use the following exclusion variables in your `.env`:
+
+*   **`CONTAINER_EXCLUDE_IPS`**: Applied by the Docker container. 
+    *   *Linux users:* Use this to exclude networks from the host's global routing table.
+    *   *Windows users:* Use this for exclusions within the WSL2 environment.
+*   **`HOST_EXCLUDE_IPS`**: Applied by the PowerShell script. 
+    *   *Windows users:* Use this to exclude Windows host traffic (e.g., local LAN, office networks) from being routed into WSL2.
+
+#### Common Ranges (RFC 1918)
+You can add these ranges (comma-separated) to either list depending on your needs:
+- `192.168.0.0/16` — Home/Office Wi-Fi.
+- `172.16.0.0/12` — Docker/WSL2 internal bridges.
+- `10.0.0.0/8` — Enterprise networks.
 
 ---
 
