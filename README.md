@@ -78,6 +78,7 @@ The server must be configured to forward traffic from the tunnel to the internet
 | `REMOTE_USER` | `root` | SSH user (must have root privileges). |
 | `LOCAL_TUN_IP` | `10.0.0.1` | Internal IP for the local end of the tunnel. |
 | `REMOTE_TUN_IP` | `10.0.0.2` | Internal IP for the remote end of the tunnel. |
+| `TUNNEL_MTU` | `1404` | MTU size. Lowering this helps if some websites fail to load. |
 | `CONTAINER_EXCLUDE_IPS` | - | IPs excluded inside WSL/Container (Include `REMOTE_HOST` here). |
 | `HOST_EXCLUDE_IPS` | - | IPs excluded on Windows Host (Local networks, Server IP, etc). |
 
@@ -129,6 +130,7 @@ You can add these ranges (comma-separated) to either list depending on your need
 ## Troubleshooting
 
 - **Connection Timeout**: Ensure `your.server.ip` is in the exclusion lists. If not, the SSH client will try to connect through itself, creating a loop.
+- **MTU issues**: If websites hang or you see `channel 0: rcvd too much data` in logs, lower `TUNNEL_MTU` in `.env`.
 - **WSL2 Not Found**: Ensure WSL2 is running by typing `wsl -l -v` in PowerShell.
 
 ---

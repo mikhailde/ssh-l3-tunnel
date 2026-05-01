@@ -1,6 +1,6 @@
 FROM alpine:latest
 
-RUN apk add --no-cache openssh-client iproute2
+RUN apk add --no-cache openssh-client iproute2 iptables
 
 WORKDIR /app
 

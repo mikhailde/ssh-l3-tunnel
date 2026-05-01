@@ -3,7 +3,9 @@
 # --- Config ---
 P=${REMOTE_PORT:-22}; U=${REMOTE_USER:-root}
 L=${LOCAL_TUN_IP:-10.0.0.1}; R=${REMOTE_TUN_IP:-10.0.0.2}
+MTU=${TUNNEL_MTU:-1404}
 K="/tmp/id_rsa"; MK="/root/.ssh/id_rsa"
+MSS_RULE="-p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu"
 
 # Detect gateway
 GW_LINE=$(ip route show default | head -n1)
@@ -14,6 +16,8 @@ cleanup() {
     echo ">>> Restoration..."
     ip route del default 2>/dev/null
     ip route add default $VIA dev $DEV 2>/dev/null
+    iptables -t mangle -D FORWARD $MSS_RULE 2>/dev/null
+    iptables -t mangle -D OUTPUT $MSS_RULE 2>/dev/null
     [ -n "$SSH_PID" ] && kill "$SSH_PID"
     exit
 }
@@ -46,7 +50,11 @@ until [ -d /sys/class/net/tun0 ]; do
 done
 
 # 4. Final Network Setup
-ip addr add "$L" peer "$R" dev tun0 && ip link set tun0 up
+ip addr add "$L" peer "$R" dev tun0
+ip link set dev tun0 mtu "$MTU" up
+iptables -t mangle -A FORWARD $MSS_RULE
+iptables -t mangle -A OUTPUT $MSS_RULE
+
 ssh -i "$K" -p "$P" -o StrictHostKeyChecking=no "$U@$REMOTE_HOST" \
     "ip addr add $R peer $L dev tun0 2>/dev/null; ip link set tun0 up" || cleanup
 
