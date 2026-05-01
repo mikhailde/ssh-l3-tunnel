@@ -42,7 +42,7 @@ ssh $SSH_OPT "$U@$SSH_HOST" "ip link delete $D_NAME 2>/dev/null || true" || clea
 
 # 3. Establish Tunnel
 echo ">>> Connecting to $SSH_HOST ($D_NAME)..."
-ssh $SSH_OPT -o ExitOnForwardFailure=yes \
+ssh $SSH_OPT -v -o ExitOnForwardFailure=yes \
     -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -N -w "$D_NUM:$D_NUM" "$U@$SSH_HOST" &
 SSH_PID=$!
 
