@@ -11,7 +11,8 @@ if (Test-Path "$PSScriptRoot/../config/.env") {
     }
 }
 
-$targets = ($env.HOST_EXCLUDE_IPS -split ',' | Where-Object { $_ }).Trim()
+$tunDev = if ($env.TUN_DEV) { $env.TUN_DEV } else { "tun0" }
+$targets = ($env.EXCLUDE_HOST -split ',' | Where-Object { $_ }).Trim()
 $wslIp = (wsl hostname -I).Trim().Split(' ')[0]
 $wslIdx = (Get-NetIPInterface -InterfaceAlias *WSL* -AddressFamily IPv4 | Select-Object -First 1).InterfaceIndex
 $main = Get-NetRoute -DestinationPrefix "0.0.0.0/0" | Sort-Object RouteMetric | Select-Object -First 1
@@ -36,9 +37,9 @@ if ($Action -eq "Up") {
     if (-not (wsl docker ps -q -f name=ssh-tunnel)) {
         wsl bash -c "docker compose up -d"
         
-        Write-Host "Waiting for tun0..." -NoNewline
+        Write-Host "Waiting for $tunDev..." -NoNewline
         for ($i=0; $i -lt 30; $i++) {
-            if (wsl docker exec ssh-tunnel ip link show tun0 2>$null) { 
+            if (wsl docker exec ssh-tunnel ip link show $tunDev 2>$null) { 
                 Write-Host " Ready!" -Fore Green; break 
             }
             Write-Host "." -NoNewline
@@ -48,10 +49,10 @@ if ($Action -eq "Up") {
 
     wsl -u root bash -c "
         sysctl -w net.ipv4.ip_forward=1 >/dev/null;
-        iptables -C FORWARD -i tun0 -j ACCEPT 2>/dev/null || iptables -I FORWARD -i tun0 -j ACCEPT;
-        iptables -C FORWARD -o tun0 -j ACCEPT 2>/dev/null || iptables -I FORWARD -o tun0 -j ACCEPT;
-        iptables -t nat -C POSTROUTING -o tun0 -j MASQUERADE 2>/dev/null || \
-        iptables -t nat -A POSTROUTING -o tun0 -j MASQUERADE
+        iptables -C FORWARD -i $tunDev -j ACCEPT 2>/dev/null || iptables -I FORWARD -i $tunDev -j ACCEPT;
+        iptables -C FORWARD -o $tunDev -j ACCEPT 2>/dev/null || iptables -I FORWARD -o $tunDev -j ACCEPT;
+        iptables -t nat -C POSTROUTING -o $tunDev -j MASQUERADE 2>/dev/null || \
+        iptables -t nat -A POSTROUTING -o $tunDev -j MASQUERADE
     "
 
     foreach ($t in $targets) { route add $t mask 255.255.255.255 $mainGw metric 1 2>$null }
@@ -60,9 +61,9 @@ if ($Action -eq "Up") {
 else {
     Write-Host ">>> STOPPING <<<" -Fore Cyan
     wsl -u root bash -c "
-        iptables -D FORWARD -i tun0 -j ACCEPT 2>/dev/null;
-        iptables -D FORWARD -o tun0 -j ACCEPT 2>/dev/null;
-        iptables -t nat -D POSTROUTING -o tun0 -j MASQUERADE 2>/dev/null
+        iptables -D FORWARD -i $tunDev -j ACCEPT 2>/dev/null;
+        iptables -D FORWARD -o $tunDev -j ACCEPT 2>/dev/null;
+        iptables -t nat -D POSTROUTING -o $tunDev -j MASQUERADE 2>/dev/null
     "
     Set-Routes ""
     foreach ($t in $targets) { route delete $t 2>$null }

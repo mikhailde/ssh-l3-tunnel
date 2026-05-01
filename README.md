@@ -25,7 +25,7 @@ AllowTcpForwarding yes
 ```
 
 #### IP Forwarding & NAT (Masquerade)
-The server must be configured to forward traffic from the tunnel to the internet. 
+The server must be configured to forward traffic from the tunnel to the internet.
 
 1. **Enable IP Forwarding:**
    ```bash
@@ -73,22 +73,23 @@ The server must be configured to forward traffic from the tunnel to the internet
 
 | Variable | Default | Description |
 | :--- | :--- | :--- |
-| `REMOTE_HOST` | - | IP or Domain of your SSH server. |
-| `REMOTE_PORT` | `22` | SSH port. |
-| `REMOTE_USER` | `root` | SSH user (must have root privileges). |
-| `LOCAL_TUN_IP` | `10.0.0.1` | Internal IP for the local end of the tunnel. |
-| `REMOTE_TUN_IP` | `10.0.0.2` | Internal IP for the remote end of the tunnel. |
-| `TUNNEL_MTU` | `1404` | MTU size. Lowering this helps if some websites fail to load. |
-| `CONTAINER_EXCLUDE_IPS` | - | IPs excluded inside WSL/Container (Include `REMOTE_HOST` here). |
-| `HOST_EXCLUDE_IPS` | - | IPs excluded on Windows Host (Local networks, Server IP, etc). |
+| `SSH_HOST` | - | IP or Domain of your SSH server. |
+| `SSH_PORT` | `22` | SSH port. |
+| `SSH_USER` | `root` | SSH user (must have root privileges). |
+| `TUN_DEV` | `tun0` | Name of the tunnel device (e.g., `tun5`). |
+| `TUN_MTU` | `1404` | MTU size. Lowering this helps if some websites fail to load. |
+| `TUN_LOCAL_IP` | `10.0.0.1` | Internal IP for the local end of the tunnel. |
+| `TUN_REMOTE_IP` | `10.0.0.2` | Internal IP for the remote end of the tunnel. |
+| `EXCLUDE_CONTAINER` | - | IPs excluded inside WSL/Container (Include `SSH_HOST` here). |
+| `EXCLUDE_HOST` | - | IPs excluded on Windows Host (Local networks, Server IP, etc). |
 
 ### Exclusions & Routing
 To prevent traffic loops and maintain access to local devices, you can use the following exclusion variables in your `.env`:
 
-*   **`CONTAINER_EXCLUDE_IPS`**: Applied by the Docker container. 
+*   **`EXCLUDE_CONTAINER`**: Applied by the Docker container.
     *   *Linux users:* Use this to exclude networks from the host's global routing table.
     *   *Windows users:* Use this for exclusions within the WSL2 environment.
-*   **`HOST_EXCLUDE_IPS`**: Applied by the PowerShell script. 
+*   **`EXCLUDE_HOST`**: Applied by the PowerShell script.
     *   *Windows users:* Use this to exclude Windows host traffic (e.g., local LAN, office networks) from being routed into WSL2.
 
 #### Common Ranges (RFC 1918)
@@ -130,7 +131,7 @@ You can add these ranges (comma-separated) to either list depending on your need
 ## Troubleshooting
 
 - **Connection Timeout**: Ensure `your.server.ip` is in the exclusion lists. If not, the SSH client will try to connect through itself, creating a loop.
-- **MTU issues**: If websites hang or you see `channel 0: rcvd too much data` in logs, lower `TUNNEL_MTU` in `.env`.
+- **MTU issues**: If websites hang or you see `channel 0: rcvd too much data` in logs, lower `TUN_MTU` in `.env`.
 - **WSL2 Not Found**: Ensure WSL2 is running by typing `wsl -l -v` in PowerShell.
 
 ---
