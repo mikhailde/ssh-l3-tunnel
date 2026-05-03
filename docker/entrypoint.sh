@@ -8,75 +8,92 @@ L=${TUN_LOCAL_IP:-10.0.0.1}; R=${TUN_REMOTE_IP:-10.0.0.2}
 MTU=${TUN_MTU:-1404}
 K="/tmp/id_rsa"; MK="/root/.ssh/id_rsa"
 MSS_RULE="-p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu"
-SSH_OPT="-i $K -p $P -o StrictHostKeyChecking=no -o ConnectTimeout=5"
+SSH_OPT="-i $K -p $P -o StrictHostKeyChecking=no -o ConnectTimeout=5 -o ServerAliveInterval=25 -o ServerAliveCountMax=2"
+
+# Verbosity Level (0=none, 1=-v, 2=-vv, 3=-vvv)
+DEBUG_LVL=${SSH_DEBUG:-0}
+V_FLAG=""
+[ "$DEBUG_LVL" -eq 1 ] && V_FLAG="-v"
+[ "$DEBUG_LVL" -eq 2 ] && V_FLAG="-vv"
+[ "$DEBUG_LVL" -ge 3 ] && V_FLAG="-vvv"
+
+log() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [$1] $2"
+}
+
+cleanup() {
+    log "INFO" "Restoration started..."
+    ip route del default 2>/dev/null
+    ip route add default $VIA dev $DEV 2>/dev/null
+    iptables -t mangle -D FORWARD $MSS_RULE 2>/dev/null
+    iptables -t mangle -D OUTPUT $MSS_RULE 2>/dev/null
+    [ -n "$SSH_PID" ] && kill "$SSH_PID" 2>/dev/null
+    log "INFO" "Tunnel stopped."
+    exit
+}
+trap cleanup SIGINT SIGTERM
 
 # Detect gateway
 GW_LINE=$(ip route show default | head -n1)
 DEV=$(echo "$GW_LINE" | awk '{print $5}')
 VIA=$(echo "$GW_LINE" | grep -o "via [^ ]*")
 
-cleanup() {
-    echo ">>> Restoration..."
-    ip route del default 2>/dev/null
-    ip route add default $VIA dev $DEV 2>/dev/null
-    iptables -t mangle -D FORWARD $MSS_RULE 2>/dev/null
-    iptables -t mangle -D OUTPUT $MSS_RULE 2>/dev/null
-    [ -n "$SSH_PID" ] && kill "$SSH_PID" 2>/dev/null
-    exit
-}
-trap cleanup SIGINT SIGTERM
+log "INFO" "Starting SSH L3 Tunnel Engine"
 
 # Preparation
-[ ! -f "$MK" ] && echo "Key missing" && exit 1
+[ ! -f "$MK" ] && { log "ERROR" "Private key missing at $MK"; exit 1; }
 cp "$MK" "$K" && chmod 600 "$K"
 
-# 1. Exclusions
-echo ">>> Setting container exclusions..."
+# 1. Routing Exclusions
+log "INFO" "Setting container exclusions: ${EXCLUDE_CONTAINER:-none}"
 for target in $(echo "$EXCLUDE_CONTAINER" | tr ',' ' '); do
     ip route replace "$target" $VIA dev $DEV 2>/dev/null
 done
 
 # 2. Remote Cleanup
-echo ">>> Preparing remote server..."
-ssh $SSH_OPT "$U@$SSH_HOST" "ip link delete $D_NAME 2>/dev/null || true" || cleanup
+log "INFO" "Cleaning up remote interface $D_NAME..."
+ssh $SSH_OPT "$U@$SSH_HOST" "ip link delete $D_NAME 2>/dev/null || true" || { log "ERROR" "Initial SSH connection failed"; cleanup; }
 
 # 3. Establish Tunnel
-echo ">>> Connecting to $SSH_HOST ($D_NAME)..."
-ssh $SSH_OPT -v -o ExitOnForwardFailure=yes \
-    -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -N -w "$D_NUM:$D_NUM" "$U@$SSH_HOST" &
+log "INFO" "Connecting to $SSH_HOST ($D_NAME)..."
+# Redirect stderr to stdout to pipe everything through the log function
+ssh $SSH_OPT $V_FLAG -o ExitOnForwardFailure=yes -N -w "$D_NUM:$D_NUM" "$U@$SSH_HOST" 2>&1 | while read -r line; do
+    [ -n "$line" ] && log "SSH" "$line"
+done &
 SSH_PID=$!
 
-# Wait for tun0
+# Wait for tun device to appear
 T=0
 until [ -d "/sys/class/net/$D_NAME" ]; do
     T=$((T+1))
-    [ "$T" -gt 5 ] && { echo "Error: tun0 timeout"; cleanup; }
-    kill -0 "$SSH_PID" 2>/dev/null || { echo "SSH failed"; cleanup; }
+    [ "$T" -gt 5 ] && { log "ERROR" "tun0 interface failed to appear (timeout)"; cleanup; }
+    kill -0 "$SSH_PID" 2>/dev/null || { log "ERROR" "SSH process died during tunnel creation"; cleanup; }
     sleep 1
 done
 
-# 4. Final Network Setup
-echo ">>> Configuring network (MTU $MTU)..."
+# 4. Local Network Setup
+log "INFO" "Configuring network (MTU $MTU)..."
 ip addr add "$L" peer "$R" dev "$D_NAME"
 ip link set dev "$D_NAME" mtu "$MTU" up
 iptables -t mangle -A FORWARD $MSS_RULE
 iptables -t mangle -A OUTPUT $MSS_RULE
 
-# Setup remote networking
+# 5. Remote Network Setup
 ssh $SSH_OPT "$U@$SSH_HOST" \
-    "ip addr add $R peer $L dev $D_NAME 2>/dev/null; ip link set $D_NAME mtu $MTU up" || cleanup
+    "ip addr add $R peer $L dev $D_NAME 2>/dev/null; ip link set $D_NAME mtu $MTU up" || { log "ERROR" "Failed to configure remote interface"; cleanup; }
 
-# Verify data path
-echo ">>> Verifying data path..."
+# 6. Verify Data Path
+log "INFO" "Verifying data path (ping $R)..."
 T=0
 until ping -c 1 -W 1 "$R" >/dev/null; do
     T=$((T+1))
-    [ "$T" -gt 5 ] && { echo "Error: data path timeout"; cleanup; }
+    [ "$T" -gt 5 ] && { log "ERROR" "Data path verification failed (ping timeout)"; cleanup; }
     kill -0 "$SSH_PID" 2>/dev/null || cleanup
     sleep 1
 done
 
 ip route replace default via "$R" dev "$D_NAME"
-echo ">>> TUNNEL IS UP"
+log "SUCCESS" "TUNNEL IS UP AND ROUTING TRAFFIC"
+
 wait "$SSH_PID"
 cleanup

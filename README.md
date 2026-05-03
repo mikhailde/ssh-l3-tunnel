@@ -6,6 +6,7 @@ A high-performance, VPN-like Layer 3 tunnel over SSH, fully dockerized. This pro
 
 - **True L3 Tunneling**: Unlike standard SSH proxies (SOCKS), this creates a virtual `tun` device, allowing ICMP (ping), UDP, and all TCP traffic to pass through.
 - **Dockerized Engine**: The entire SSH logic is isolated in a lightweight Alpine container.
+- **Real-time Log Streaming**: Engine logs (including SSH debug output) are streamed directly to the host console with color-coded status levels for easier monitoring.
 - **Windows Integration**: Includes an optimized PowerShell script to bridge Windows host traffic into the WSL2 tunnel with automatic priority management.
 - **Smart Routing**: Separate exclusion lists for the container/WSL side and the Windows host.
 - **Zero Static Waits**: Scripts use retry loops to verify connectivity as fast as possible.
@@ -76,27 +77,13 @@ The server must be configured to forward traffic from the tunnel to the internet
 | `SSH_HOST` | - | IP or Domain of your SSH server. |
 | `SSH_PORT` | `22` | SSH port. |
 | `SSH_USER` | `root` | SSH user (must have root privileges). |
+| `SSH_DEBUG` | `0` | SSH Debug level: `0` (off), `1` (-v), `2` (-vv), `3` (-vvv). |
 | `TUN_DEV` | `tun0` | Name of the tunnel device (e.g., `tun5`). |
 | `TUN_MTU` | `1404` | MTU size. Lowering this helps if some websites fail to load. |
 | `TUN_LOCAL_IP` | `10.0.0.1` | Internal IP for the local end of the tunnel. |
 | `TUN_REMOTE_IP` | `10.0.0.2` | Internal IP for the remote end of the tunnel. |
 | `EXCLUDE_CONTAINER` | - | IPs excluded inside WSL/Container (Include `SSH_HOST` here). |
 | `EXCLUDE_HOST` | - | IPs excluded on Windows Host (Local networks, Server IP, etc). |
-
-### Exclusions & Routing
-To prevent traffic loops and maintain access to local devices, you can use the following exclusion variables in your `.env`:
-
-*   **`EXCLUDE_CONTAINER`**: Applied by the Docker container.
-    *   *Linux users:* Use this to exclude networks from the host's global routing table.
-    *   *Windows users:* Use this for exclusions within the WSL2 environment.
-*   **`EXCLUDE_HOST`**: Applied by the PowerShell script.
-    *   *Windows users:* Use this to exclude Windows host traffic (e.g., local LAN, office networks) from being routed into WSL2.
-
-#### Common Ranges (RFC 1918)
-You can add these ranges (comma-separated) to either list depending on your needs:
-- `192.168.0.0/16` — Home/Office Wi-Fi.
-- `172.16.0.0/12` — Docker/WSL2 internal bridges.
-- `10.0.0.0/8` — Enterprise networks.
 
 ---
 
@@ -118,6 +105,16 @@ You can add these ranges (comma-separated) to either list depending on your need
    ```bash
    docker-compose up -d
    ```
+
+---
+
+## Logging Levels
+The system uses a unified logging format for both the Docker engine and the host script:
+- **[INFO]**: Standard initialization steps.
+- **[SSH]**: Verbose output from the SSH client (visible if `SSH_DEBUG > 0`).
+- **[SUCCESS]**: Confirmed connectivity or verified public IP.
+- **[ERROR]**: Critical failures with automatic cleanup.
+
 ---
 
 ## How it Works
@@ -130,8 +127,9 @@ You can add these ranges (comma-separated) to either list depending on your need
 
 ## Troubleshooting
 
-- **Connection Timeout**: Ensure `your.server.ip` is in the exclusion lists. If not, the SSH client will try to connect through itself, creating a loop.
-- **MTU issues**: If websites hang or you see `channel 0: rcvd too much data` in logs, lower `TUN_MTU` in `.env`.
+- **Detailed SSH Debugging**: If the connection fails, set `SSH_DEBUG=1` in your `.env`. This will pipe the full SSH handshake and authentication logs directly into your console.
+- **Connection Timeout**: Ensure `SSH_HOST` is in both exclusion lists. If not, the SSH client will try to connect through itself, creating a loop.
+- **MTU issues**: If websites hang or you see `channel 0: rcvd too much data` in logs, lower `TUN_MTU` (e.g., to `1300`) in `.env`.
 - **WSL2 Not Found**: Ensure WSL2 is running by typing `wsl -l -v` in PowerShell.
 
 ---
