@@ -5,7 +5,7 @@ D_NAME=${TUN_DEV:-tun0}
 D_NUM=$(echo "$D_NAME" | tr -dc '0-9')
 P=${SSH_PORT:-22}; U=${SSH_USER:-root}
 L=${TUN_LOCAL_IP:-10.0.0.1}; R=${TUN_REMOTE_IP:-10.0.0.2}
-MTU=${TUN_MTU:-1404}
+MTU=${TUN_MTU:-1400}
 K="/tmp/id_rsa"; MK="/root/.ssh/id_rsa"
 MSS_RULE="-p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu"
 SSH_OPT="-i $K -p $P -o StrictHostKeyChecking=no -o ConnectTimeout=5 -o ServerAliveInterval=25 -o ServerAliveCountMax=2"

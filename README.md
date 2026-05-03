@@ -79,7 +79,7 @@ The server must be configured to forward traffic from the tunnel to the internet
 | `SSH_USER` | `root` | SSH user (must have root privileges). |
 | `SSH_DEBUG` | `0` | SSH Debug level: `0` (off), `1` (-v), `2` (-vv), `3` (-vvv). |
 | `TUN_DEV` | `tun0` | Name of the tunnel device (e.g., `tun5`). |
-| `TUN_MTU` | `1404` | MTU size. Lowering this helps if some websites fail to load. |
+| `TUN_MTU` | `1400` | MTU size. Lowering this helps if some websites fail to load. |
 | `TUN_LOCAL_IP` | `10.0.0.1` | Internal IP for the local end of the tunnel. |
 | `TUN_REMOTE_IP` | `10.0.0.2` | Internal IP for the remote end of the tunnel. |
 | `EXCLUDE_CONTAINER` | - | IPs excluded inside WSL/Container (Include `SSH_HOST` here). |
