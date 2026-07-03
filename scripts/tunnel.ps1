@@ -30,23 +30,53 @@ $tunDev = if ($env.TUN_DEV) { $env.TUN_DEV } else { "tun0" }
 $targets = ($env.EXCLUDE_HOST -split ',' | Where-Object { $_ }).Trim()
 $wslIp = (wsl hostname -I).Trim().Split(' ')[0]
 $wslIdx = (Get-NetIPInterface -InterfaceAlias *WSL* -AddressFamily IPv4 | Select-Object -First 1).InterfaceIndex
-$main = Get-NetRoute -DestinationPrefix "0.0.0.0/0" | Sort-Object RouteMetric | Select-Object -First 1
+$main = Get-NetRoute -DestinationPrefix "0.0.0.0/0" | Where-Object { $_.InterfaceIndex -ne $wslIdx } | Sort-Object RouteMetric | Select-Object -First 1
 $mainIdx, $mainGw = $main.InterfaceIndex, $main.NextHop
 
 # Route and Interface Metric management
-function Set-Routes($gw) {
-    if ($Action -eq "Up") {
-        Set-NetIPInterface -InterfaceIndex $mainIdx -InterfaceMetric 1000 | Out-Null
-        Set-NetIPInterface -InterfaceIndex $wslIdx -InterfaceMetric 1 | Out-Null
+function Set-Routes($gw, $routeAction) {
+    if ($routeAction -eq "Up") {
+        Set-NetIPInterface -InterfaceIndex $mainIdx -InterfaceMetric 1000 -AutomaticMetric Disabled | Out-Null
+        Set-NetIPInterface -InterfaceIndex $wslIdx -InterfaceMetric 1 -AutomaticMetric Disabled | Out-Null
         Get-NetRoute -DestinationPrefix "0.0.0.0/0" -InterfaceIndex $wslIdx -EA 0 | Remove-NetRoute -Confirm:0 | Out-Null
         New-NetRoute -DestinationPrefix "0.0.0.0/0" -NextHop $gw -InterfaceIndex $wslIdx -RouteMetric 0 -Confirm:0 | Out-Null
     } else {
-        Set-NetIPInterface -InterfaceIndex $mainIdx -InterfaceMetric 0 | Out-Null
-        Set-NetIPInterface -InterfaceIndex $wslIdx -InterfaceMetric 5000 | Out-Null
+        Set-NetIPInterface -InterfaceIndex $mainIdx -AutomaticMetric Enabled | Out-Null
+        Set-NetIPInterface -InterfaceIndex $wslIdx -AutomaticMetric Enabled | Out-Null
         Get-NetRoute -DestinationPrefix "0.0.0.0/0" -InterfaceIndex $wslIdx -EA 0 | Remove-NetRoute -Confirm:0 | Out-Null
     }
 }
 
+# Public IP verification helper
+function Verify-IP {
+    Write-Log "Verifying public IP..." "INFO"
+    $ip = $null
+    for ($i = 1; $i -le 6; $i++) {
+        $ip = curl.exe -s --max-time 2 ifconfig.me 2>$null
+        if ($ip) { break }
+        Start-Sleep -Milliseconds 500
+    }
+
+    if ($ip) { Write-Log "External IP: $ip" "SUCCESS" }
+    else { Write-Log "Could not verify External IP" "ERROR" }
+}
+
+# Centralized cleanup logic
+function Stop-Tunnel {
+    Write-Log "Stopping tunnel and restoring network..." "WARN"
+    wsl -u root bash -c "
+        iptables -D FORWARD -i $tunDev -j ACCEPT 2>/dev/null;
+        iptables -D FORWARD -o $tunDev -j ACCEPT 2>/dev/null;
+        iptables -t nat -D POSTROUTING -o $tunDev -j MASQUERADE 2>/dev/null
+    " | Out-Null
+    Set-Routes "" "Down"
+    foreach ($t in $targets) { $null = route delete $t 2>$null }
+    wsl bash -c "docker compose down" | Out-Null
+    Write-Log "Cleanup complete." "SUCCESS"
+    Verify-IP
+}
+
+# Main routing setup/teardown
 if ($Action -eq "Up") {
     Write-Log "Starting Tunnel Process..." "INFO"
     
@@ -97,28 +127,24 @@ if ($Action -eq "Up") {
     $hostExcl = if ($env.EXCLUDE_HOST) { $env.EXCLUDE_HOST } else { "none" }
     Write-Log "Configuring Windows Host routes (Exclusions: $hostExcl)..." "INFO"
     foreach ($t in $targets) { $null = route add $t mask 255.255.255.255 $mainGw metric 1 2>$null }
-    Set-Routes $wslIp
+    Set-Routes $wslIp "Up"
+
+    # Verify tunnel IP before starting loop
+    Verify-IP
+
+    # Sleep loop
+    try {
+        Write-Log "Tunnel is UP and running. Press Ctrl+C to stop tunnel and restore network." "SUCCESS"
+        while ($true) {
+            Start-Sleep -Seconds 1
+        }
+    }
+    finally {
+        # Executes when Ctrl+C is pressed
+        Write-Log "Script stopped." "INFO"
+        Stop-Tunnel
+    }
 }
 else {
-    Write-Log "Stopping tunnel and restoring network..." "WARN"
-    wsl -u root bash -c "
-        iptables -D FORWARD -i $tunDev -j ACCEPT 2>/dev/null;
-        iptables -D FORWARD -o $tunDev -j ACCEPT 2>/dev/null;
-        iptables -t nat -D POSTROUTING -o $tunDev -j MASQUERADE 2>/dev/null
-    " | Out-Null
-    Set-Routes ""
-    foreach ($t in $targets) { $null = route delete $t 2>$null }
-    wsl bash -c "docker compose down" | Out-Null
-    Write-Log "Cleanup complete." "SUCCESS"
+    Stop-Tunnel
 }
-
-Write-Log "Verifying public IP..." "INFO"
-$ip = $null
-for ($i = 1; $i -le 6; $i++) {
-    $ip = curl.exe -s --max-time 2 ifconfig.me 2>$null
-    if ($ip) { break }
-    Start-Sleep -Milliseconds 500
-}
-
-if ($ip) { Write-Log "External IP: $ip" "SUCCESS" } 
-else { Write-Log "Could not verify External IP" "ERROR" }
